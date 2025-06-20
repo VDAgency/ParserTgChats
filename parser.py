@@ -14,6 +14,7 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 CHAT_IDS = [int(chat_id.strip()) for chat_id in os.getenv("CHAT_IDS", "").split(",")]
+PHONE = os.getenv("PHONE")
 
 client = TelegramClient(
     "Property",
@@ -25,6 +26,16 @@ client = TelegramClient(
     lang_code="en",
     system_lang_code="en-US"
 )
+
+# Функция для запуска клиента
+async def start_client():
+    await client.start(phone=PHONE)
+    print("✅ Telethon client connected")
+
+# Функция для остановки клиента
+async def stop_client():
+    await client.disconnect()
+    print("🛑 Telethon client disconnected")
 
 async def send_test_message():
     me = await client.get_me()
@@ -131,10 +142,13 @@ async def parse_chat(chat_id, start_date=None):
     except Exception as e:
         print(f"{datetime.now()}: Unexpected error parsing chat {chat_id}: {str(e)}. Skipping this chat.")
 
+# Экспортируем клиент и функции
+__all__ = ['client', 'start_client', 'stop_client']
+
 async def main():
     try:
-        await client.start()
-        print(f"{datetime.now()}: Client started")
+        await client.start(phone=PHONE)
+        print(f"{datetime.now()}: ✅ Telethon client started")
 
         await send_test_message()
 
@@ -149,7 +163,7 @@ async def main():
         print(f"{datetime.now()}: Error in main: {str(e)}")
     finally:
         await client.disconnect()
-        print(f"{datetime.now()}: Client disconnected")
+        print(f"{datetime.now()}: 🛑 Telethon client disconnected")
 
 if __name__ == "__main__":
     import asyncio

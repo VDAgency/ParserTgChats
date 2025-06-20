@@ -4,22 +4,21 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from telethon import TelegramClient
 import asyncio
+from parser import client, start_client, stop_client
 
 # Загрузка переменных окружения
 load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
+PHONE = os.getenv("PHONE")
 
 # Инициализация FastAPI
 app = FastAPI()
 
-# Инициализация Telethon клиента
-client = TelegramClient("Property", API_ID, API_HASH)
-
 # Запускаем клиент Telethon при старте FastAPI
 @app.on_event("startup")
 async def startup_event():
-    await client.start()
+    await client.start(phone=PHONE)
     print("✅ Telethon client connected")
 
 # Закрываем клиент Telethon при завершении работы
