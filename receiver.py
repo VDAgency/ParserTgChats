@@ -33,6 +33,11 @@ class MessageData(BaseModel):
     sender_id: int
     message_text: str
 
+# Эндпоинт для проверки здоровья
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
 # Эндпоинт для приёма webhook-запросов
 @app.post("/send_message")
 async def send_message(data: MessageData):
