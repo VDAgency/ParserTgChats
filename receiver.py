@@ -32,6 +32,10 @@ class MessageData(BaseModel):
     sender_id: int
     message_text: str
 
+@app.get("/")
+async def root():
+    return {"message": "ParserTgChats is running!"}
+
 # Эндпоинт для проверки здоровья
 @app.get("/health")
 async def health_check():
