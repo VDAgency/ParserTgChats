@@ -55,12 +55,39 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-# Эндпоинт для приёма webhook-запросов
+# # Эндпоинт для приёма webhook-запросов
+# @app.post("/send_message")
+# async def send_message(data: MessageData):
+#     try:
+#         entity = await get_entity_or_fail(data.sender_id)
+#         await client.send_message(entity, data.message_text)
+#         return {"status": "sent", "to": data.sender_id, "text": data.message_text}
+#     except Exception as e:
+#         return {"status": "error", "details": str(e)}
+
 @app.post("/send_message")
 async def send_message(data: MessageData):
+    logger.debug(f"Received request with data: {data}")
+    
     try:
+        logger.info(f"Attempting to resolve entity for sender_id: {data.sender_id}")
         entity = await get_entity_or_fail(data.sender_id)
+        logger.debug(f"Entity resolved successfully: {entity}")
+        
+        logger.info(f"Sending message '{data.message_text}' to {data.sender_id}")
         await client.send_message(entity, data.message_text)
-        return {"status": "sent", "to": data.sender_id, "text": data.message_text}
+        logger.debug(f"Message sent successfully to {data.sender_id}")
+        
+        response = {"status": "sent", "to": data.sender_id, "text": data.message_text}
+        logger.info(f"Returning response: {response}")
+        return response
+    except ValueError as ve:
+        logger.error(f"ValueError during entity resolution: {str(ve)}")
+        response = {"status": "error", "details": str(ve)}
+        logger.info(f"Returning error response: {response}")
+        return response
     except Exception as e:
-        return {"status": "error", "details": str(e)}
+        logger.error(f"Unexpected error during message sending: {str(e)}", exc_info=True)
+        response = {"status": "error", "details": str(e)}
+        logger.info(f"Returning error response: {response}")
+        return response
