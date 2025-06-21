@@ -1,3 +1,4 @@
+import logging
 import os
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
@@ -5,6 +6,19 @@ from dotenv import load_dotenv
 from telethon import TelegramClient
 import asyncio
 from parser import client, start_client, stop_client, get_entity_or_fail
+
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),  # Логи в файл
+        logging.StreamHandler()  # Логи в консоль
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -19,13 +33,13 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
     await start_client()
-    print("✅ Telethon client connected")
+    logger.info("✅ Telethon client connected")
 
 # Закрываем клиент Telethon при завершении работы
 @app.on_event("shutdown")
 async def shutdown_event():
     await stop_client()
-    print("🛑 Telethon client disconnected")
+    logger.info("🛑 Telethon client disconnected")
 
 # Структура входящих данных от Make
 class MessageData(BaseModel):

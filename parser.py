@@ -54,7 +54,8 @@ async def send_test_message():
 
 async def get_entity_or_fail(entity_id):
     try:
-        return await client.get_entity(entity_id)  # Получает сущность по ID
+        entity = await client.get_entity(entity_id)  # Получает сущность по ID
+        return entity
     except ValueError as e:
         raise Exception(f"Could not resolve entity {entity_id}: {str(e)}")
 
