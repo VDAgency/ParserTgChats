@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from telethon import TelegramClient
 import asyncio
-from parser import client, start_client, stop_client
+from parser import client, start_client, stop_client, get_entity_or_fail
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -18,13 +18,13 @@ app = FastAPI()
 # Запускаем клиент Telethon при старте FastAPI
 @app.on_event("startup")
 async def startup_event():
-    await client.start(phone=PHONE)
+    await start_client()
     print("✅ Telethon client connected")
 
 # Закрываем клиент Telethon при завершении работы
 @app.on_event("shutdown")
 async def shutdown_event():
-    await client.disconnect()
+    await stop_client()
     print("🛑 Telethon client disconnected")
 
 # Структура входящих данных от Make
@@ -45,7 +45,8 @@ async def health_check():
 @app.post("/send_message")
 async def send_message(data: MessageData):
     try:
-        await client.send_message(data.sender_id, data.message_text)
+        entity = await get_entity_or_fail(data.sender_id)
+        await client.send_message(entity, data.message_text)
         return {"status": "sent", "to": data.sender_id, "text": data.message_text}
     except Exception as e:
         return {"status": "error", "details": str(e)}

@@ -29,19 +29,34 @@ client = TelegramClient(
 
 # Функция для запуска клиента
 async def start_client():
-    await client.start(phone=PHONE)
-    print("✅ Telethon client connected")
+    print(f"{datetime.now()}: ✅ We launch the Telethon client for the user bot. | Запускаем клиента Telethon для юзер-бота.")
+    try:
+        await client.connect()  # Убедимся, что соединение активно
+        if not await client.is_user_authorized():
+            await client.start(phone=PHONE)
+        me = await client.get_me()
+        print(f"Authenticated as: {me.id} ({me.phone})")
+        print("✅ Telethon client connected")
+    except Exception as e:
+        print(f"{datetime.now()}: Error starting client: {str(e)}")
+        raise
 
 # Функция для остановки клиента
 async def stop_client():
     await client.disconnect()
-    print("🛑 Telethon client disconnected")
+    print(f"{datetime.now()}: 🛑 Telethon client disconnected")
 
 async def send_test_message():
     me = await client.get_me()
     my_user_id = me.id
     await client.send_message(my_user_id, "Bot activated successfully! This is a test message. | Бот успешно активирован! Это тестовое сообщение.")
     print(f"{datetime.now()}: Test message sent to yourself. | Тестовое сообщение, отправленное самому себе.")
+
+async def get_entity_or_fail(entity_id):
+    try:
+        return await client.get_entity(entity_id)  # Получает сущность по ID
+    except ValueError as e:
+        raise Exception(f"Could not resolve entity {entity_id}: {str(e)}")
 
 async def check_session():
     try:
@@ -143,13 +158,12 @@ async def parse_chat(chat_id, start_date=None):
         print(f"{datetime.now()}: Unexpected error parsing chat {chat_id}: {str(e)}. Skipping this chat.")
 
 # Экспортируем клиент и функции
-__all__ = ['client', 'start_client', 'stop_client']
+__all__ = ['client', 'start_client', 'stop_client', 'get_entity_or_fail']
 
 async def main():
     try:
-        await client.start(phone=PHONE)
-        print(f"{datetime.now()}: ✅ Telethon client started")
-
+        await start_client()
+        
         await send_test_message()
 
         for chat_id in CHAT_IDS:
@@ -158,12 +172,11 @@ async def main():
                     return
             print(f"{datetime.now()}: Parsing chat {chat_id}")
             await parse_chat(chat_id)
-            await asyncio.sleep(random.uniform(10, 30))  # Задержка между чатами
+            await asyncio.sleep(random.uniform(5, 15))  # Задержка между чатами
     except Exception as e:
         print(f"{datetime.now()}: Error in main: {str(e)}")
     finally:
-        await client.disconnect()
-        print(f"{datetime.now()}: 🛑 Telethon client disconnected")
+        await stop_client()
 
 if __name__ == "__main__":
     import asyncio
