@@ -45,6 +45,7 @@ async def shutdown_event():
 class MessageData(BaseModel):
     sender_id: int
     message_text: str
+    common_chat_id: int
 
 @app.get("/")
 async def root():
