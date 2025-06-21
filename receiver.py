@@ -55,21 +55,33 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-# # Эндпоинт для приёма webhook-запросов
-# @app.post("/send_message")
-# async def send_message(data: MessageData):
-#     try:
-#         entity = await get_entity_or_fail(data.sender_id)
-#         await client.send_message(entity, data.message_text)
-#         return {"status": "sent", "to": data.sender_id, "text": data.message_text}
-#     except Exception as e:
-#         return {"status": "error", "details": str(e)}
+async def ensure_entity_known(sender_id: int, common_chat_id: int):
+    logger.info(f"Checking if entity {sender_id} is known in common chat {common_chat_id}")
+    try:
+        # Получаем сущность общего чата
+        chat_entity = await get_entity_or_fail(common_chat_id)
+        # Получаем список участников
+        participants = await client.get_participants(chat_entity, limit=200)  # Ограничиваем для тестов
+        for participant in participants:
+            if participant.id == sender_id:
+                logger.info(f"Entity {sender_id} found in participants")
+                return True
+        logger.warning(f"Entity {sender_id} not found in participants of chat {common_chat_id}")
+        return False
+    except Exception as e:
+        logger.error(f"Error fetching participants: {str(e)}", exc_info=True)
+        return False
 
 @app.post("/send_message")
 async def send_message(data: MessageData):
     logger.debug(f"Received request with data: {data}")
     
     try:
+        # Проверяем, известна ли сущность
+        if not await ensure_entity_known(data.sender_id, data.common_chat_id):
+            logger.error(f"Cannot resolve entity {data.sender_id} even after checking participants")
+            return {"status": "error", "details": f"Could not resolve entity {data.sender_id}. Ensure the user is in the common chat."}
+        
         logger.info(f"Attempting to resolve entity for sender_id: {data.sender_id}")
         entity = await get_entity_or_fail(data.sender_id)
         logger.debug(f"Entity resolved successfully: {entity}")
@@ -83,7 +95,10 @@ async def send_message(data: MessageData):
         return response
     except ValueError as ve:
         logger.error(f"ValueError during entity resolution: {str(ve)}")
-        response = {"status": "error", "details": str(ve)}
+        response = {
+            "status": "error",
+            "details": f"{str(ve)}. Ensure {data.sender_id} is accessible via common chat."
+        }
         logger.info(f"Returning error response: {response}")
         return response
     except Exception as e:
