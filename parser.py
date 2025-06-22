@@ -1,4 +1,6 @@
+import logging
 from telethon import TelegramClient
+from telethon.tl.types import User
 from telethon.errors import FloodWaitError, SessionPasswordNeededError, PhoneMigrateError
 from datetime import datetime, timedelta
 import time
@@ -8,6 +10,18 @@ import random
 from dotenv import load_dotenv
 from database import save_message, is_message_processed, get_last_parsed_date
 from webhook_processor import process_and_send_webhook
+
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 load_dotenv()
@@ -93,23 +107,36 @@ async def parse_chat(chat_id, start_date=None):
         if not start_date:
             start_date = datetime.now()  # Начинаем с текущего момента
 
-        messages_processed = 0  # Счетчик для отладки (уже не ограничивает)
-        while True:  # Цикл продолжается, пока не найдем обработанное сообщение
+        messages_processed = 0
+        while True:
             try:
                 # Получаем сообщения из чата, начиная с start_date
-                async for message in client.iter_messages(chat_id, offset_date=start_date, limit=50):  # Лимит 50 для одного запроса
+                async for message in client.iter_messages(chat_id, offset_date=start_date, limit=100):
                     # Проверяем, активна ли сессия
                     if not await check_session():
                         if not await reconnect():
                             return  # Выход, если не удалось переподключиться
                     # Проверяем, было ли сообщение уже обработано
                     if await is_message_processed(message.id):
-                        print(f"{datetime.now()}: Reached processed message {message.id} in chat {chat_id}. Stopping.")
+                        logger.info(f"{datetime.now()}: Reached processed message {message.id} in chat {chat_id}. Stopping. | Достигнуто обработанное сообщение {message.id} в чате {chat_id}. Остановка парсинга.")
                         return  # Завершаем работу, как только нашли обработанное сообщение
 
                     # Получаем информацию о чате и отправителе
                     chat = await message.get_chat()
                     sender = await message.get_sender()
+                    
+                    # Кэшируем сущность отправителя для получения access_hash
+                    if sender and isinstance(sender, User):
+                        try:
+                            sender_entity = await client.get_entity(sender.id)
+                            logger.debug(f"Cached entity for {sender.id} with access_hash: {sender_entity.access_hash}")
+                            logger.debug(f"Full sender entity data: {vars(sender_entity)}")
+                        except ValueError as ve:
+                            logger.warning(f"Could not fully resolve sender {sender.id} entity: {str(ve)}")
+                            logger.debug(f"Partial sender data: {vars(sender) if hasattr(sender, '__dict__') else str(sender)}")
+                        except Exception as e:
+                            logger.error(f"Unexpected error resolving sender {sender.id}: {str(e)}", exc_info=True)
+                            logger.debug(f"Partial sender data: {vars(sender) if hasattr(sender, '__dict__') else str(sender)}")
 
                     # Преобразуем время сообщения в нужный формат
                     message_timestamp = message.date.timestamp()
