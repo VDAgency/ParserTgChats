@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import aiohttp
 import uvicorn
 from bot_instance import bot
 from aiogram import Dispatcher, types, F
@@ -18,7 +19,7 @@ from parser import client
 from dotenv import load_dotenv
 from states import ChatStates
 from parser import get_entity_or_fail, start_client, stop_client, parse_loop, send_test_message
-from database import init_db, add_user_chat, delete_user_chat, is_user_chat_exists, get_user_chats
+from database import init_db, add_user_chat, delete_user_chat, is_user_chat_exists, get_user_chats, get_all_tracked_chats
 
 
 # Загружаем .env
@@ -62,7 +63,8 @@ async def admin_logic_start(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Добавить чат", callback_data="add_chat")],
         [InlineKeyboardButton(text="➖ Удалить чат", callback_data="remove_chat")],
-        [InlineKeyboardButton(text="📋 Мои чаты", callback_data="list_chats")]
+        [InlineKeyboardButton(text="📋 Мои чаты", callback_data="list_chats")],
+        [InlineKeyboardButton(text="📋 Все подключенные чаты", callback_data="list_all_chats")]
     ])
 
     # Формируем сообщение
@@ -178,6 +180,51 @@ async def list_user_chats(callback: types.CallbackQuery):
 
     await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
+@dp.callback_query(F.data == "list_all_chats")
+async def list_all_chats(callback: types.CallbackQuery):
+    chats = await get_all_tracked_chats()
+
+    if not chats:
+        await callback.message.answer("Нет добавленных чатов.")
+        return
+
+    text = "<b>Список всех добавленных чатов:</b>\n\n"
+    for i, chat_id in enumerate(chats, start=1):
+        try:
+            entity = await client.get_entity(PeerChannel(chat_id))
+            title = getattr(entity, "title", None)
+            username = getattr(entity, "username", None)
+            link = f"https://t.me/{username}" if username else ""
+        except (ChannelInvalidError, ChannelPrivateError, ChannelPublicGroupNaError):
+            title = "❌ Чат недоступен"
+            link = ""
+        except Exception as e:
+            title = f"⚠️ Ошибка: {str(e)}"
+            link = ""
+
+        if link:
+            text += f"{i}. <b>{title}</b> — <a href='{link}'>ссылка</a>\n"
+        else:
+            text += f"{i}. <b>{title}</b> (ID: <code>{chat_id}</code>)\n"
+
+    await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+
+async def check_health():
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}/health"
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        logger.info("Health check passed")
+                    else:
+                        logger.warning(f"Health check failed with status {response.status}")
+        except Exception as e:
+            logger.error(f"Health check error: {str(e)}")
+        await asyncio.sleep(300)
+
 
 # Функция для запуска FastAPI
 async def run_fastapi():
@@ -198,13 +245,19 @@ async def main():
     # Запускаем FastAPI сервер в отдельной задаче
     fastapi_task = asyncio.create_task(run_fastapi())
     
-    # Ожидаем завершения polling_task (пока бот жив)
-    await polling_task
-
-    # Когда бот остановится, останавливаем парсер и клиента
-    parsing_task.cancel()
-    fastapi_task.cancel()
-    await stop_client()
+    # Запускаем периодическую проверку сервера
+    health_task = asyncio.create_task(check_health())
+    
+    try:
+        # Ожидаем завершения polling_task (пока бот жив)
+        await polling_task
+    except asyncio.CancelledError:
+        # Когда бот остановится, останавливаем парсер, сервер и клиента
+        parsing_task.cancel()
+        fastapi_task.cancel()
+        health_task.cancel()
+        await stop_client()
+        raise
 
 async def app_start():
     await init_db()
