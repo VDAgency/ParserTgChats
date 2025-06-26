@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import uvicorn
 from bot_instance import bot
 from aiogram import Dispatcher, types, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -12,6 +13,7 @@ from aiogram.types import CallbackQuery
 from telethon.tl.types import PeerChannel, PeerChat
 from telethon.errors import ChannelInvalidError, ChannelPrivateError, ChannelPublicGroupNaError
 
+from receiver import app
 from parser import client
 from dotenv import load_dotenv
 from states import ChatStates
@@ -177,19 +179,31 @@ async def list_user_chats(callback: types.CallbackQuery):
     await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
+# Функция для запуска FastAPI
+async def run_fastapi():
+    config = uvicorn.Config(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
+
 # Функция запуска бота
 async def main():
+    
     await start_client()
     await send_test_message()
+    
     # Запускаем polling бота и парсер параллельно
     polling_task = asyncio.create_task(dp.start_polling(bot))
     parsing_task = asyncio.create_task(parse_loop())
 
+    # Запускаем FastAPI сервер в отдельной задаче
+    fastapi_task = asyncio.create_task(run_fastapi())
+    
     # Ожидаем завершения polling_task (пока бот жив)
     await polling_task
 
     # Когда бот остановится, останавливаем парсер и клиента
     parsing_task.cancel()
+    fastapi_task.cancel()
     await stop_client()
 
 async def app_start():
