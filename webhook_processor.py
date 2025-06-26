@@ -1,10 +1,25 @@
+import logging
 import requests
 import os
+import sys
 from dotenv import load_dotenv
 from database import get_message_by_id
 
+
 load_dotenv()
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log", encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 # Положительные словосочетания (то, что мы ищем)
 POSITIVE_PHRASES = [
@@ -41,19 +56,19 @@ async def process_and_send_webhook(message_id):
     # Читаем сообщение из базы
     message_data = await get_message_by_id(message_id)
     if not message_data:
-        print(f"No message found with ID {message_id}")
+        logger.info(f"No message found with ID {message_id}")
         return
 
     # Фильтруем сообщение
     if filter_message(message_data):
-        print(f"Message {message_id} matches criteria, sending to webhook")
+        logger.info(f"Message {message_id} matches criteria, sending to webhook")
         try:
             response = requests.post(WEBHOOK_URL, json=message_data)
             if response.status_code == 200:
-                print(f"Successfully sent to webhook: {message_id}")
+                logger.info(f"Successfully sent to webhook: {message_id}")
             else:
-                print(f"Failed to send to webhook, status code: {response.status_code}")
+                logger.info(f"Failed to send to webhook, status code: {response.status_code}")
         except Exception as e:
-            print(f"Error sending to webhook: {str(e)}")
+            logger.info(f"Error sending to webhook: {str(e)}")
     else:
-        print(f"Message {message_id} skipped, does not match criteria")
+        logger.info(f"Message {message_id} skipped, does not match criteria")

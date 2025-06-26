@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -11,10 +12,10 @@ from parser import client, start_client, stop_client, get_entity_or_fail
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("app.log"),  # Логи в файл
-        logging.StreamHandler()  # Логи в консоль
+        logging.FileHandler("app.log", encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ async def health_check():
 
 # @app.post("/send_message")
 # async def send_message(data: MessageData):
-#     logger.debug(f"Received request with data: {data}")
+#     logger.info(f"Received request with data: {data}")
     
 #     try:
 #         Проверяем, известна ли сущность
@@ -84,11 +85,11 @@ async def health_check():
         
 #         logger.info(f"Attempting to resolve entity for sender_id: {data.sender_id}")
 #         entity = await get_entity_or_fail(data.sender_id)
-#         logger.debug(f"Entity resolved successfully: {entity}")
+#         logger.info(f"Entity resolved successfully: {entity}")
         
 #         logger.info(f"Sending message '{data.message_text}' to {data.sender_id}")
 #         await client.send_message(entity, data.message_text)
-#         logger.debug(f"Message sent successfully to {data.sender_id}")
+#         logger.info(f"Message sent successfully to {data.sender_id}")
         
 #         response = {"status": "sent", "to": data.sender_id, "text": data.message_text}
 #         logger.info(f"Returning response: {response}")
