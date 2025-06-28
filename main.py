@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import sys
-import aiohttp
 import uvicorn
 from bot_instance import bot
 from aiogram import Dispatcher, types, F
@@ -15,11 +14,12 @@ from telethon.tl.types import PeerChannel, PeerChat
 from telethon.errors import ChannelInvalidError, ChannelPrivateError, ChannelPublicGroupNaError
 
 from receiver import app
-from parser import client
+from client_instance import client
 from dotenv import load_dotenv
 from states import ChatStates
 from parser import get_entity_or_fail, start_client, stop_client, parse_loop, send_test_message
 from database import init_db, add_user_chat, delete_user_chat, is_user_chat_exists, get_user_chats, get_all_tracked_chats
+from receiver import check_health
 
 
 # Загружаем .env
@@ -208,22 +208,6 @@ async def list_all_chats(callback: types.CallbackQuery):
             text += f"{i}. <b>{title}</b> (ID: <code>{chat_id}</code>)\n"
 
     await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
-
-
-
-async def check_health():
-    while True:
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}/health"
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        logger.info("Health check passed")
-                    else:
-                        logger.warning(f"Health check failed with status {response.status}")
-        except Exception as e:
-            logger.error(f"Health check error: {str(e)}")
-        await asyncio.sleep(300)
 
 
 # Функция для запуска FastAPI
