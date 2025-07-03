@@ -230,7 +230,7 @@ async def main():
     fastapi_task = asyncio.create_task(run_fastapi())
     
     # Запускаем периодическую проверку сервера
-    health_task = asyncio.create_task(check_health())
+    # health_task = asyncio.create_task(check_health())
     
     try:
         # Ожидаем завершения polling_task (пока бот жив)
@@ -239,7 +239,7 @@ async def main():
         # Когда бот остановится, останавливаем парсер, сервер и клиента
         parsing_task.cancel()
         fastapi_task.cancel()
-        health_task.cancel()
+        # health_task.cancel()
         await stop_client()
         raise
 

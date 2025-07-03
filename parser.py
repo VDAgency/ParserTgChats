@@ -152,10 +152,10 @@ async def parse_chat(chat_id, start_date=None):
                     await send_to_supergroup_topic(message.id)
                     
                     # Вызываем функцию обработки и отправки вебхука
-                    await process_and_send_webhook(message.id)
+                    # await process_and_send_webhook(message.id)
                     
                     messages_processed += 1  # Счетчик для отладки
-                    await asyncio.sleep(random.uniform(1, 3))  # Случайная задержка для имитации человека
+                    await asyncio.sleep(random.uniform(1, 5))  # Случайная задержка для имитации человека
 
                 # Если дошли сюда, значит, в текущем запросе не нашли обработанное сообщение
                 # Устанавливаем start_date на дату последнего обработанного сообщения минус 1 секунда
