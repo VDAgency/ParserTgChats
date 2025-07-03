@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtualenv
+venv/
+ENV/
+env/
+
+# Git
+.git/
+.gitignore
+
+# IDE / Editor configs
+*.vscode/
+.idea/
+
+# OS / System
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Backup files
+*.bak
+*.swp
+*.swo
+
+# Mac/Windows hidden files
+ehthumbs.db
+Icon?

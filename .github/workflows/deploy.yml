@@ -1,0 +1,28 @@
+name: 🚀 Deploy Telegram Bot to VPS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Клонируем репозиторий
+        uses: actions/checkout@v3
+
+      - name: 🔐 Устанавливаем SSH-ключ
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🚀 Деплой на сервер
+        run: |
+          ssh -o StrictHostKeyChecking=no root@188.166.232.230 << 'EOF'
+            cd /root/ParserTgChats
+            git pull origin main
+            docker compose down
+            docker compose up --build -d
+          EOF
