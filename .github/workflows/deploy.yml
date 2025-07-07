@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:  # 👈 добавили ручной запуск
 
 jobs:
   deploy:
