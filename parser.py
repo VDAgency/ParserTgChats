@@ -10,7 +10,7 @@ import sys
 import asyncio
 import random
 from dotenv import load_dotenv
-from database import save_message, is_message_processed, get_last_parsed_date, get_all_tracked_chats
+from database import save_message, is_message_processed, get_last_parsed_date, get_all_tracked_chats, check_keywords_match
 from webhook_processor import process_and_send_webhook
 from group_sender import send_to_supergroup_topic
 
@@ -130,6 +130,16 @@ async def parse_chat(chat_id, start_date=None):
                             logger.error(f"Unexpected error resolving sender {sender.id}: {str(e)}", exc_info=True)
                             logger.info(f"Partial sender data: {vars(sender) if hasattr(sender, '__dict__') else str(sender)}")
 
+                    # Безопасное извлечение имени и юзернейма
+                    if sender and isinstance(sender, User):
+                        first_name = sender.first_name
+                        username = sender.username
+                        sender_id = sender.id
+                    else:
+                        first_name = None
+                        username = None
+                        sender_id = sender.id if sender else None
+                    
                     # Преобразуем время сообщения в нужный формат
                     message_timestamp = message.date.timestamp()
                     message_data = {
@@ -137,13 +147,23 @@ async def parse_chat(chat_id, start_date=None):
                         "message_id": message.id,
                         "chat_id": chat.id,
                         "chat_type": chat.type if hasattr(chat, "type") else "unknown",
-                        "sender_id": sender.id if sender else None,
-                        "first_name": sender.first_name if sender else None,
-                        "username": sender.username if sender else None,
+                        "sender_id": sender_id,
+                        "first_name": first_name,
+                        "username": username,
                         "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(message_timestamp)),
                         "text": message.text if message.text else "",
                     }
-
+                    
+                    # ⛔ Пропускаем все, кроме текстовых сообщений
+                    if not message.text or not message.text.strip():
+                        logger.info(f"{datetime.now()}: Пропущено сообщение {message.id} без текста из чата {chat_id}")
+                        continue
+                    
+                    # ⛔ Пропускаем, если нет ключевых слов
+                    if not await check_keywords_match(message.text):
+                        logger.info(f"{datetime.now()}: Пропущено сообщение {message.id} — нет ключевых слов.")
+                        continue
+                    
                     # Сохраняем новое сообщение в базу
                     await save_message(**message_data)
                     logger.info(f"{datetime.now()}: Saved message {message.id} from chat {chat_id}")
@@ -184,16 +204,6 @@ async def parse_chat(chat_id, start_date=None):
 __all__ = ['client', 'start_client', 'stop_client', 'get_entity_or_fail']
 
 
-# async def parse_loop():
-#     while True:
-#         for chat_id in CHAT_IDS:
-#             if not await check_session():
-#                 if not await reconnect():
-#                     logger.info("Failed to reconnect, stopping parse loop")
-#                     return
-#             await parse_chat(chat_id)
-#             await asyncio.sleep(random.uniform(5, 15))
-#         await asyncio.sleep(60)  # Задержка между циклами
 
 async def parse_loop():
     while True:
@@ -219,25 +229,4 @@ async def parse_loop():
         logger.info("Цикл парсинга завершён. Ожидаем перед следующим циклом.")
         await asyncio.sleep(60)  # Задержка между полными циклами
 
-# async def main():
-#     try:
-#         await start_client()
-        
-#         await send_test_message()
-
-#         for chat_id in CHAT_IDS:
-#             if not await check_session():
-#                 if not await reconnect():
-#                     return
-#             logger.info(f"{datetime.now()}: Parsing chat {chat_id}")
-#             await parse_chat(chat_id)
-#             await asyncio.sleep(random.uniform(5, 15))  # Задержка между чатами
-#     except Exception as e:
-#         logger.info(f"{datetime.now()}: Error in main: {str(e)}")
-#     finally:
-#         await stop_client()
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
 

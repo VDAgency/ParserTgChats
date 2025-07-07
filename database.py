@@ -51,6 +51,16 @@ async def init_db():
                 UNIQUE(user_id, chat_id)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                keyword TEXT NOT NULL,
+                is_negative INTEGER DEFAULT 0,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, keyword)
+            )
+        """)
         await db.commit()
 
 
@@ -145,7 +155,99 @@ async def get_all_tracked_chats():
         cursor = await db.execute("SELECT DISTINCT chat_id FROM user_chats")
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
-    
+
+
+# Функция добавления ключевых слов (по одному или списком)
+async def add_keywords(user_id: int, raw_text: str, is_negative: bool = False) -> list[str]:
+    """
+    Добавляет ключевые слова или фразы, разделённые запятыми или переносами строк.
+    Возвращает список добавленных (уникальных) ключевых слов.
+    """
+    candidates = [word.strip() for part in raw_text.split("\n") for word in part.split(",")]
+    keywords = list({kw.lower() for kw in candidates if kw})
+
+    if not keywords:
+        return []
+
+    added = []
+    async with aiosqlite.connect("bot.db") as db:
+        for kw in keywords:
+            try:
+                await db.execute(
+                    "INSERT INTO keywords (user_id, keyword, is_negative) VALUES (?, ?, ?)",
+                    (user_id, kw, int(is_negative))
+                )
+                added.append(kw)
+            except aiosqlite.IntegrityError:
+                continue
+        await db.commit()
+
+    return added
+
+
+# Функция удаления ключевого слова
+async def delete_keyword(user_id: int, keyword: str) -> bool:
+    """
+    Удаляет ключевое слово. Возвращает True, если что-то было удалено.
+    """
+    kw = keyword.strip().lower()
+    if not kw:
+        return False
+
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            DELETE FROM keywords WHERE user_id = ? AND keyword = ?
+        """, (user_id, kw))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+# Функция получения всех ключевых слов пользователя
+async def get_user_keywords(user_id: int) -> list[str]:
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT keyword FROM keywords WHERE user_id = ? ORDER BY added_at DESC
+        """, (user_id,))
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+# Функция получения всех ключевых слов парсинга
+async def get_all_keywords() -> list[str]:
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("SELECT DISTINCT keyword FROM keywords")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+
+# Функция для получения всех ключевых слов для сравнения при сохранении
+async def get_keywords_for_filtering():
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("SELECT DISTINCT LOWER(keyword) FROM keywords")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+async def check_keywords_match(text: str) -> bool:
+    if not text:
+        return False
+    keywords = await get_keywords_for_filtering()
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in keywords)
+
+
+# Функция получения позитивных и негативных ключевых слов и фраз
+async def get_keywords_by_type(keyword_type: str):
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT keyword FROM keywords WHERE type = ?
+        """, (keyword_type,))
+        rows = await cursor.fetchall()
+        return [row[0].lower() for row in rows]
+
+
+
+
 
 # Инициализация базы данных при запуске
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import sys
 import logging
 from client_instance import client
 from dotenv import load_dotenv
-from database import get_message_by_id, is_message_processed
+from database import get_message_by_id, is_message_processed, get_keywords_by_type
 from bot_instance import bot
 from telethon.tl.types import PeerChannel, PeerChat
 from telethon.errors import ChannelInvalidError, ChannelPrivateError, ChannelPublicGroupNaError
@@ -24,28 +24,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Ключевые слова (можно позже вынести отдельно)
-POSITIVE_PHRASES = [
-    "ищу аренду", "хочу арендовать", "ищу покупку", "хочу купить",
-    "ищу квартиру", "хочу квартиру", "ищу виллу", "хочу виллу",
-    "ищу коттедж", "хочу коттедж", "ищу кондоминиум", "хочу кондоминиум",
-    "looking for rent", "want to rent", "looking to buy", "want to buy",
-    "looking for apartment", "want apartment", "looking for villa", "want villa",
-    "looking for cottage", "want cottage", "looking for condominium", "want condominium"
-]
+# # Ключевые слова (можно позже вынести отдельно)
+# POSITIVE_PHRASES = [
+#     "ищу аренду", "хочу арендовать", "ищу покупку", "хочу купить",
+#     "ищу квартиру", "хочу квартиру", "ищу виллу", "хочу виллу",
+#     "ищу коттедж", "хочу коттедж", "ищу кондоминиум", "хочу кондоминиум",
+#     "looking for rent", "want to rent", "looking to buy", "want to buy",
+#     "looking for apartment", "want apartment", "looking for villa", "want villa",
+#     "looking for cottage", "want cottage", "looking for condominium", "want condominium"
+# ]
 
-NEGATIVE_PHRASES = [
-    "доступно в аренду", "доступна аренда", "продается", "available for rent",
-    "for sale", "available to buy"
-]
+# NEGATIVE_PHRASES = [
+#     "доступно в аренду", "доступна аренда", "продается", "available for rent",
+#     "for sale", "available to buy"
+# ]
 
-def filter_message(message_data):
+# def filter_message(message_data):
+#     if not message_data or "text" not in message_data:
+#         return False
+#     text = message_data["text"].lower()
+#     has_positive = any(phrase in text for phrase in POSITIVE_PHRASES)
+#     has_negative = any(phrase in text for phrase in NEGATIVE_PHRASES)
+#     return has_positive and not has_negative
+
+
+async def filter_message(message_data):
     if not message_data or "text" not in message_data:
         return False
+
     text = message_data["text"].lower()
-    has_positive = any(phrase in text for phrase in POSITIVE_PHRASES)
-    has_negative = any(phrase in text for phrase in NEGATIVE_PHRASES)
+
+    positive_phrases = await get_keywords_by_type("positive")
+    negative_phrases = await get_keywords_by_type("negative")
+
+    has_positive = any(phrase in text for phrase in positive_phrases)
+    has_negative = any(phrase in text for phrase in negative_phrases)
+
     return has_positive and not has_negative
+
+
+
+
 
 async def mark_message_as_sent(message_id: int):
     from database import aiosqlite
