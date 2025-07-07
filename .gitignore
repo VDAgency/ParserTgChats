@@ -1,3 +1,5 @@
+.env
+*.session
 *.sqlite
 venv/
 __pycache__/
