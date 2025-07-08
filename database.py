@@ -222,29 +222,40 @@ async def get_all_keywords() -> list[str]:
 
 
 # Функция для получения всех ключевых слов для сравнения при сохранении
-async def get_keywords_for_filtering():
-    async with aiosqlite.connect("bot.db") as db:
-        cursor = await db.execute("SELECT DISTINCT LOWER(keyword) FROM keywords")
-        rows = await cursor.fetchall()
-        return [row[0] for row in rows]
-
 async def check_keywords_match(text: str) -> bool:
     if not text:
         return False
-    keywords = await get_keywords_for_filtering()
+
     text_lower = text.lower()
-    return any(keyword in text_lower for keyword in keywords)
+
+    # Получаем списки
+    positive_keywords = await get_keywords_by_type(is_negative=False)
+    negative_keywords = await get_keywords_by_type(is_negative=True)
+
+    # Проверяем наличие позитивных фраз
+    has_positive = any(keyword in text_lower for keyword in positive_keywords)
+
+    # Если позитивных нет — сразу False
+    if not has_positive:
+        return False
+
+    # Если есть негативные — отклоняем
+    has_negative = any(keyword in text_lower for keyword in negative_keywords)
+    if has_negative:
+        return False
+
+    return True
 
 
 # Функция получения позитивных и негативных ключевых слов и фраз
-async def get_keywords_by_type(keyword_type: str):
+async def get_keywords_by_type(is_negative: bool) -> list[str]:
     async with aiosqlite.connect("bot.db") as db:
-        cursor = await db.execute("""
-            SELECT keyword FROM keywords WHERE type = ?
-        """, (keyword_type,))
+        cursor = await db.execute(
+            "SELECT DISTINCT LOWER(keyword) FROM keywords WHERE is_negative = ?",
+            (1 if is_negative else 0,)
+        )
         rows = await cursor.fetchall()
-        return [row[0].lower() for row in rows]
-
+        return [row[0] for row in rows]
 
 
 
