@@ -93,10 +93,6 @@ async def send_to_supergroup_topic(message_id: int):
         logger.info(f"[group_sender] Message {message_id} already sent. Skipping.")
         return
 
-    if not filter_message(message_data):
-        logger.info(f"[group_sender] Message {message_id} does not match filter.")
-        return
-
     # Формируем текст
     chat_id = message_data.get("chat_id")
     entity = await client.get_entity(PeerChannel(chat_id))
