@@ -61,6 +61,11 @@ async def init_db():
                 UNIQUE(user_id, keyword)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS processed_messages (
+                message_id INTEGER PRIMARY KEY
+            )
+        """)
         await db.commit()
 
 
@@ -74,9 +79,13 @@ async def save_message(update_id, message_id, chat_id, chat_type, sender_id, fir
 
 async def is_message_processed(message_id):
     async with aiosqlite.connect("bot.db") as db:
-        cursor = await db.execute("SELECT COUNT(*) FROM messages WHERE message_id = ?", (message_id,))
-        count = await cursor.fetchone()
-        return count[0] > 0
+        cursor = await db.execute("SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id,))
+        return await cursor.fetchone() is not None
+
+async def mark_message_as_processed(message_id):
+    async with aiosqlite.connect("bot.db") as db:
+        await db.execute("INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)", (message_id,))
+        await db.commit()
 
 async def get_last_parsed_date(chat_id):
     async with aiosqlite.connect("bot.db") as db:
@@ -112,14 +121,29 @@ async def get_message_by_id(message_id):
         return None
 
 
-# Добавление нового чата для пользователя
+# # Добавление нового чата для пользователя
+# async def add_user_chat(user_id, chat_id):
+#     async with aiosqlite.connect("bot.db") as db:
+#         await db.execute("""
+#             INSERT OR IGNORE INTO user_chats (user_id, chat_id)
+#             VALUES (?, ?)
+#         """, (user_id, chat_id))
+#         await db.commit()
+
+
+# Функция для добавления чата в базу данных с учётом префикса для супергрупп/каналов
 async def add_user_chat(user_id, chat_id):
+    # Если это канал или супергруппа, добавляем префикс '-100'
+    if chat_id > 0:  # Для чатов с положительным chat_id (обычно это личные чаты), ничего не меняем
+        chat_id = f"-100{chat_id}"  # Добавляем префикс для супергрупп и каналов
     async with aiosqlite.connect("bot.db") as db:
         await db.execute("""
             INSERT OR IGNORE INTO user_chats (user_id, chat_id)
             VALUES (?, ?)
         """, (user_id, chat_id))
         await db.commit()
+    logger.info(f"Chat {chat_id} added to database for user {user_id}.")
+
 
 # Удаление чата для пользователя
 async def delete_user_chat(user_id: int, chat_id: int):
@@ -202,12 +226,25 @@ async def delete_keyword(user_id: int, keyword: str) -> bool:
         return cursor.rowcount > 0
 
 
-# Функция получения всех ключевых слов пользователя
-async def get_user_keywords(user_id: int) -> list[str]:
+# # Функция получения всех ключевых слов пользователя
+# async def get_user_keywords(user_id: int) -> list[str]:
+#     async with aiosqlite.connect("bot.db") as db:
+#         cursor = await db.execute("""
+#             SELECT keyword FROM keywords WHERE user_id = ? ORDER BY added_at DESC
+#         """, (user_id,))
+#         rows = await cursor.fetchall()
+#         return [row[0] for row in rows]
+
+
+# Функция получения позитивных и негативных ключевых слов и фраз пользователя
+async def get_user_keywords_by_type(user_id: int, keyword_type: str) -> list[str]:
+    is_negative = 1 if keyword_type == "negative" else 0
     async with aiosqlite.connect("bot.db") as db:
         cursor = await db.execute("""
-            SELECT keyword FROM keywords WHERE user_id = ? ORDER BY added_at DESC
-        """, (user_id,))
+            SELECT keyword FROM keywords
+            WHERE user_id = ? AND is_negative = ?
+            ORDER BY added_at DESC
+        """, (user_id, is_negative))
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
@@ -218,6 +255,20 @@ async def get_all_keywords() -> list[str]:
         cursor = await db.execute("SELECT DISTINCT keyword FROM keywords")
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
+
+
+# Получение всех ключевых слов (от всех админов) по типу: "positive" или "negative"
+async def get_all_keywords_by_type(keyword_type: str) -> list[str]:
+    is_negative = 1 if keyword_type == "negative" else 0
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT DISTINCT keyword FROM keywords
+            WHERE is_negative = ?
+            ORDER BY added_at DESC
+        """, (is_negative,))
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
 
 
 

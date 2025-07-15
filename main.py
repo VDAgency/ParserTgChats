@@ -19,9 +19,9 @@ from receiver import app
 from client_instance import client
 from dotenv import load_dotenv
 from states import ChatStates, KeywordStates
-from parser import get_entity_or_fail, start_client, stop_client, parse_loop, send_test_message
+from parser import get_entity_or_fail, start_client, stop_client, send_test_message
 from database import init_db, add_user_chat, delete_user_chat, is_user_chat_exists, get_user_chats, get_all_tracked_chats
-from database import add_keywords, delete_keyword, get_user_keywords, get_all_keywords
+from database import add_keywords, delete_keyword, get_user_keywords_by_type, get_all_keywords_by_type
 from receiver import check_health
 
 
@@ -89,8 +89,10 @@ async def working_chats(callback: CallbackQuery, state: FSMContext):
 
     # Создаём инлайн-кнопки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить чат", callback_data="add_chat")],
-        [InlineKeyboardButton(text="➖ Удалить чат", callback_data="remove_chat")],
+        [
+            InlineKeyboardButton(text="➕ Добавить чат", callback_data="add_chat"),
+            InlineKeyboardButton(text="➖ Удалить чат", callback_data="remove_chat")
+        ],
         [InlineKeyboardButton(text="📋 Мои чаты", callback_data="list_chats")],
         [InlineKeyboardButton(text="📋 Все подключенные чаты", callback_data="list_all_chats")]
     ])
@@ -111,23 +113,37 @@ async def working_chats(callback: CallbackQuery, state: FSMContext):
 async def working_keywords(callback: CallbackQuery, state: FSMContext):
     first_name = callback.from_user.first_name
 
-    # Создаём инлайн-кнопки
+    # Создаём инлайн-кнопки (две колонки)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить ключевые слова", callback_data="add_keywords")],
-        [InlineKeyboardButton(text="➖ Удалить ключевые слова", callback_data="remove_keywords")],
-        [InlineKeyboardButton(text="📋 Список ключевых слов", callback_data="list_keywords")],
-        [InlineKeyboardButton(text="📋 Все ключевые слова", callback_data="list_all_keywords")],
-        [InlineKeyboardButton(text="➕ Добавить негативные ключевые слова", callback_data="add_negative_keywords")]
+        [
+            InlineKeyboardButton(text="✅➕ Позитивные", callback_data="add_keywords"),
+            InlineKeyboardButton(text="❌➕ Негативные", callback_data="add_negative_keywords")
+        ],
+        [
+            InlineKeyboardButton(text="✅📋 Список позитивных", callback_data="list_keywords"),
+            InlineKeyboardButton(text="❌📋 Список негативных", callback_data="list_negative_keywords")
+        ],
+        [
+            InlineKeyboardButton(text="✅📋 Все позитивные (всех)", callback_data="list_all_keywords"),
+            InlineKeyboardButton(text="❌📋 Все негативные (всех)", callback_data="list_all_negative_keywords")
+        ],
+        [
+            InlineKeyboardButton(text="✅➖ Удалить позитивные", callback_data="remove_keywords"),
+            InlineKeyboardButton(text="❌➖ Удалить негативные", callback_data="remove_negative_keywords")
+        ],
     ])
 
     # Формируем сообщение
     text = (
         f"<b>{first_name}</b>!\n"
-        "В данном разделе ты можешь посмотреть ключевые слова. А так же:\n\n"
+        "В данном разделе ты можешь работать с ключевыми словами:\n\n"
+        "✅ <b>Позитивные</b> — по которым бот будет ловить сообщения.\n"
+        "❌ <b>Негативные</b> — при их наличии в тексте бот пропустит сообщение.\n\n"
+        "Ты можешь:\n"
         "• Добавить ключевое слово, или добавить сразу несколько ключевых слов или фраз, "
         "разделив их запятой или абзацем, начав с новой строки.\n"
         "• Удалить ключевое слово или фразу из списка ключевых слов, но удаление возможно только по одному слову "
-        "или одной фразе из нескольких слов."
+        "или одной фразе из нескольких слов.\n"
     )
 
     await callback.message.answer(text, reply_markup=keyboard)
@@ -324,6 +340,12 @@ async def process_keywords_input(message: Message, state: FSMContext):
     user_id = message.from_user.id
     raw_input = message.text.strip()
 
+    # Создаём инлайн-кнопки
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить еще", callback_data="add_keywords")],
+        [InlineKeyboardButton(text="Назад", callback_data="working_keywords")]
+    ])
+    
     if not raw_input:
         await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
         return
@@ -334,7 +356,7 @@ async def process_keywords_input(message: Message, state: FSMContext):
         await message.answer("⚠️ Не удалось добавить ключевые слова. Возможно, все строки были пустыми.")
     else:
         formatted = "\n".join(f"• <code>{kw}</code>" for kw in added)
-        await message.answer(f"✅ Добавлены следующие ключевые слова:\n\n{formatted}", parse_mode="HTML")
+        await message.answer(f"✅ Добавлены следующие ключевые слова:\n\n{formatted}", reply_markup=keyboard, parse_mode="HTML")
 
     await state.clear()
 
@@ -370,13 +392,13 @@ async def process_keyword_deletion(message: Message, state: FSMContext):
 @dp.callback_query(F.data == "list_keywords")
 async def handle_list_keywords(callback: CallbackQuery):
     user_id = callback.from_user.id
-    keywords = await get_user_keywords(user_id)
+    keywords = await get_user_keywords_by_type(user_id, keyword_type="positive")
 
     if not keywords:
-        await callback.message.answer("🔍 У тебя пока нет добавленных ключевых слов.")
+        await callback.message.answer("🔍 У тебя пока нет добавленных <b>положительных</b> ключевых слов.")
         return
 
-    text = "<b>🔑 Твои ключевые слова:</b>\n\n"
+    text = "🔑 Твои <b>положительные</b> ключевые слова:\n\n"
     for i, kw in enumerate(keywords, start=1):
         text += f"{i}. <code>{kw}</code>\n"
 
@@ -385,17 +407,18 @@ async def handle_list_keywords(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "list_all_keywords")
 async def handle_list_all_keywords(callback: CallbackQuery):
-    keywords = await get_all_keywords()
+    keywords = await get_all_keywords_by_type("positive")
 
     if not keywords:
-        await callback.message.answer("🔍 Пока ни один админ не добавил ключевые слова.")
+        await callback.message.answer("🔍 Пока ни один админ не добавил <b>положительные</b> ключевые слова.")
         return
 
-    text = "<b>🔑 Все ключевые слова (всех админов):</b>\n\n"
+    text = "🔑 Все <b>положительные</b> ключевые слова (всех админов):\n\n"
     for i, kw in enumerate(keywords, start=1):
         text += f"{i}. <code>{kw}</code>\n"
 
     await callback.message.answer(text, parse_mode="HTML")
+
 
 
 @dp.callback_query(F.data == "add_negative_keywords")
@@ -430,6 +453,65 @@ async def save_negative_keywords(message: Message, state: FSMContext):
     await state.clear()
 
 
+@dp.callback_query(F.data == "remove_negative_keywords")
+async def handle_remove_negative_keywords(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли <b>негативное</b> ключевое слово или фразу, которую ты хочешь удалить из отслеживания.\n\n"
+        "Удаление возможно только по одному слову или фразе за раз."
+    )
+    await state.set_state(KeywordStates.waiting_for_negative_keyword_deletion)
+
+
+@dp.message(KeywordStates.waiting_for_negative_keyword_deletion)
+async def process_keyword_negative_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    if not keyword:
+        await message.answer("⚠️ Введи <b>негативное</b> ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_keyword(user_id, keyword)
+
+    if removed:
+        await message.answer(f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено.", parse_mode="HTML")
+    else:
+        await message.answer(f"❌ Ключевое слово <code>{keyword}</code> не найдено в списке.", parse_mode="HTML")
+
+    await state.clear()
+
+
+@dp.callback_query(F.data == "list_negative_keywords")
+async def handle_list_negative_keywords(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    keywords = await get_user_keywords_by_type(user_id, keyword_type="negative")
+
+    if not keywords:
+        await callback.message.answer("🔍 У тебя пока нет добавленных <b>негативных</b> ключевых слов.")
+        return
+
+    text = "🔑 Твои <b>негативные</b> ключевые слова:\n\n"
+    for i, kw in enumerate(keywords, start=1):
+        text += f"{i}. <code>{kw}</code>\n"
+
+    await callback.message.answer(text, parse_mode="HTML")
+
+
+@dp.callback_query(F.data == "list_all_negative_keywords")
+async def handle_list_all_negative_keywords(callback: CallbackQuery):
+    keywords = await get_all_keywords_by_type("negative")
+
+    if not keywords:
+        await callback.message.answer("🔍 Пока ни один админ не добавил <b>негативные</b> ключевые слова.")
+        return
+
+    text = "🔑 Все <b>положительные</b> ключевые слова (всех админов):\n\n"
+    for i, kw in enumerate(keywords, start=1):
+        text += f"{i}. <code>{kw}</code>\n"
+
+    await callback.message.answer(text, parse_mode="HTML")
+
+
 
 # Функция для запуска FastAPI
 async def run_fastapi():
@@ -445,7 +527,7 @@ async def main():
     
     # Запускаем polling бота и парсер параллельно
     polling_task = asyncio.create_task(dp.start_polling(bot))
-    parsing_task = asyncio.create_task(parse_loop())
+    # parsing_task = asyncio.create_task(parse_loop())
 
     # Запускаем FastAPI сервер в отдельной задаче
     fastapi_task = asyncio.create_task(run_fastapi())
@@ -458,7 +540,7 @@ async def main():
         await polling_task
     except asyncio.CancelledError:
         # Когда бот остановится, останавливаем парсер, сервер и клиента
-        parsing_task.cancel()
+        # parsing_task.cancel()
         fastapi_task.cancel()
         # health_task.cancel()
         await stop_client()

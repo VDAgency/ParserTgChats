@@ -32,3 +32,16 @@ Thumbs.db
 # Mac/Windows hidden files
 ehthumbs.db
 Icon?
+
+# Игнорируем файл сессии
+*.session
+*.session-journal
+*.log
+
+# Игнорируем .env файл
+.env
+
+# Игнорируем папки и файлы, которые не нужны в контейнере
+.git
+.gitignore
+.dockerignore
