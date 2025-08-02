@@ -2,11 +2,20 @@ import logging
 import aiosqlite
 import os
 import sys
+from pymorphy3 import MorphAnalyzer
 from dotenv import load_dotenv
 import time
 
 # Загрузка переменных окружения
 load_dotenv()
+
+# Создаём экземпляр MorphAnalyzer для лемматизации
+morph = MorphAnalyzer()
+
+def lemmatize_word(word):
+    # Лемматизация слова с использованием pymorphy2
+    return morph.parse(word)[0].normal_form
+
 
 # Настройка логирования
 logging.basicConfig(
@@ -59,6 +68,15 @@ async def init_db():
                 is_negative INTEGER DEFAULT 0,
                 added_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, keyword)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS keywords_lemma (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                word TEXT NOT NULL,
+                lemma TEXT NOT NULL,
+                extra_info TEXT DEFAULT NULL
             )
         """)
         await db.execute("""
@@ -145,13 +163,20 @@ async def add_user_chat(user_id, chat_id):
     logger.info(f"Chat {chat_id} added to database for user {user_id}.")
 
 
-# Удаление чата для пользователя
+# Удаление чата для пользователя с учётом префикса для супергрупп и каналов
 async def delete_user_chat(user_id: int, chat_id: int):
+    # Если chat_id не начинается с '-100', добавляем префикс
+    if not str(chat_id).startswith('-100'):
+        chat_id = f"-100{chat_id}"
+
     async with aiosqlite.connect("bot.db") as db:
         await db.execute("""
             DELETE FROM user_chats WHERE user_id = ? AND chat_id = ?
         """, (user_id, chat_id))
         await db.commit()
+
+    logger.info(f"Chat {chat_id} deleted from database for user {user_id}.")
+
 
 # Получение всех чатов, связанных с пользователем
 async def get_user_chats(user_id: int):
@@ -162,10 +187,15 @@ async def get_user_chats(user_id: int):
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
+
 # Проверяет наличие записи в таблице user_chats для заданного пользователя и чата.
 # Используется, чтобы избежать дублирующей вставки или убедиться, что чат можно удалить.
 # Возвращает True, если такая запись существует, иначе False.
 async def is_user_chat_exists(user_id, chat_id):
+    # Если чат не начинается с "-100", добавляем этот префикс (для супергрупп и каналов)
+    if not str(chat_id).startswith('-100'):
+        chat_id = f"-100{chat_id}"
+    
     async with aiosqlite.connect("bot.db") as db:
         cursor = await db.execute("""
             SELECT 1 FROM user_chats WHERE user_id = ? AND chat_id = ?
@@ -173,12 +203,15 @@ async def is_user_chat_exists(user_id, chat_id):
         result = await cursor.fetchone()
         return result is not None
 
+
 # Получить все уникальные chat_id, которые кто-то добавил
 async def get_all_tracked_chats():
     async with aiosqlite.connect("bot.db") as db:
         cursor = await db.execute("SELECT DISTINCT chat_id FROM user_chats")
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
+
+
 
 
 # Функция добавления ключевых слов (по одному или списком)
@@ -307,6 +340,93 @@ async def get_keywords_by_type(is_negative: bool) -> list[str]:
         )
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
+
+
+
+
+
+
+
+
+
+
+
+async def add_intent_keywords_to_db(user_id, keywords):
+    async with aiosqlite.connect("bot.db") as db:
+        added_keywords = []
+        failed_keywords = []
+
+        # Максимальное количество попыток для каждой вставки
+        max_retries = 3
+
+        for keyword in keywords:
+            retries = 0
+            success = False
+
+            # Проверяем, существует ли слово в базе
+            existing_keywords = await db.execute("SELECT word FROM keywords_lemma WHERE category = ?", ("intent",))
+            existing_keywords = await existing_keywords.fetchall()
+            existing_keywords = [kw[0] for kw in existing_keywords]
+
+            if keyword in existing_keywords:
+                logger.info(f"Keyword '{keyword}' already exists in the database.")
+                failed_keywords.append(keyword)
+                continue  # Пропускаем это слово, если оно уже существует
+
+            # Лемматизируем слово для записи в графу 'lemma'
+            lemmatized_keyword = lemmatize_word(keyword)
+
+            # Пробуем записать слово в базу с до 3-х попыток
+            while retries < max_retries and not success:
+                try:
+                    # Вставляем слово в базу данных
+                    await db.execute("""
+                        INSERT INTO keywords_lemma (category, word, lemma)
+                        VALUES (?, ?, ?)
+                    """, ("intent", keyword, lemmatized_keyword))
+
+                    # Если вставка прошла успешно
+                    success = True
+                    added_keywords.append(keyword)
+
+                except Exception as e:
+                    retries += 1
+                    logger.error(f"Error adding keyword '{keyword}': {str(e)}. Retry {retries}/{max_retries}.")
+                    if retries == max_retries:
+                        logger.error(f"Failed to add keyword '{keyword}' after {max_retries} attempts.")
+                        failed_keywords.append(keyword)
+                        break
+                    await asyncio.sleep(2)  # Ожидаем перед повторной попыткой
+
+        await db.commit()
+
+        # Если есть добавленные ключевые слова, отправляем сообщение
+        if added_keywords:
+            formatted_added = "\n".join(f"• <code>{kw}</code>" for kw in added_keywords)
+            logger.info(f"Added keywords: {formatted_added}")
+
+        # Если есть неудачные ключевые слова, сообщаем о них
+        if failed_keywords:
+            formatted_failed = "\n".join(f"• <code>{kw}</code>" for kw in failed_keywords)
+            logger.info(f"Failed to add keywords: {formatted_failed}")
+            return None, failed_keywords
+
+        return added_keywords, failed_keywords
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

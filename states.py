@@ -11,3 +11,6 @@ class KeywordStates(StatesGroup):
     waiting_for_keyword_deletion = State()
     waiting_for_negative_keyword_deletion = State()
 
+class KeywordLemmaState(StatesGroup):
+    keywords_lemma_intent = State()
+    
