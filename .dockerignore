@@ -8,6 +8,7 @@ __pycache__/
 venv/
 ENV/
 env/
+.venv/
 
 # Git
 .git/
@@ -45,3 +46,8 @@ Icon?
 .git
 .gitignore
 .dockerignore
+
+# Игнорируем файлы базы данных
+*.db
+*.sqlite
+*.sqlite3
