@@ -11,3 +11,4 @@ services:
     command: python main.py
     volumes:
       - /root/ParserTgChats/Property.session:/app/Property.session
+      - /root/ParserTgChats/bot.db:/app/bot.db
