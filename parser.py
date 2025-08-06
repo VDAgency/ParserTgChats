@@ -178,6 +178,7 @@ async def process_message(event):
         "username": username,
         "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(message_timestamp)),
         "text": message.text if message.text else "",
+        "original_message_id": message.id,
     }
     
     # ⛔ Пропускаем все, кроме текстовых сообщений

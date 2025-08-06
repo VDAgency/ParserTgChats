@@ -102,13 +102,24 @@ async def send_to_supergroup_topic(message_id: int):
     first_name = message_data.get("first_name", "Без имени")
     username = message_data.get("username")
     text = message_data.get("text", "")
+    original_message_id = message_data.get("original_message_id")
 
+    # Формируем ссылку на оригинальное сообщение
+    if chatname:
+        # Публичный канал
+        message_link = f"https://t.me/{chatname}/{original_message_id}"
+    else:
+        # Приватный канал или супергруппа
+        channel_id = str(chat_id).replace("-100", "")
+        message_link = f"https://t.me/c/{channel_id}/{original_message_id}"
+    
     # Форматированное сообщение
     formatted = (
         f"<b>Чат:</b> <b>{title}</b> <code>{chat_id}</code> — <a href='{link}'>ссылка</a>\n"
         f"<b>Имя:</b> {first_name}\n"
         f"<b>Юзернейм:</b> @{username if username else 'не указан'}\n\n"
-        f"{text}"
+        f"{text}\n"
+        f"<b>🔗 Ссылка на сообщение:</b> <a href='{message_link}'>перейти</a>"
     )
 
     try:

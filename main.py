@@ -386,7 +386,7 @@ async def process_chat_delete(message: Message, state: FSMContext):
         return
 
     await delete_user_chat(user_id, chat_id)
-    await message.answer(f"✅ Чат @{username} успешно удалён из вашего списка.")
+    await message.answer(f"✅ Чат @{username} успешно удалён из вашего списка.", reply_markup=keyboard)
     await state.clear()
 
 
@@ -699,6 +699,8 @@ async def handle_list_all_negative_keywords(callback_query: CallbackQuery):
 
 
 
+
+
 # === Логика работы "умного парсинга" в боте парсере ===
 
 # Функция добавления ключевого слова категории "Намерение"
@@ -739,7 +741,45 @@ async def process_intent_keywords(message: Message, state: FSMContext):
     # Очищаем состояние
     await state.clear()
 
+@dp.message(KeywordLemmaState.keywords_lemma_intent)
+async def process_intent_keywords(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    raw_input = message.text.strip()
 
+    if not raw_input:
+        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
+        return
+
+    # Разделение по запятой и новой строке
+    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
+    if not keywords:
+        await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
+        return
+
+    added, already_existing = await add_intent_keywords_to_db(user_id, keywords)
+
+    # Строим сообщение
+    if not added and already_existing:
+        # Все слова уже были
+        existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+        await message.answer(
+            f"ℹ️ Эти слова уже были добавлены ранее в категорию <b>Намерение</b>:\n\n{existing_text}",
+            parse_mode="HTML"
+        )
+    else:
+        msg_parts = []
+
+        if added:
+            added_text = "\n".join(f"• <code>{kw}</code>" for kw in added)
+            msg_parts.append(f"✅ Добавлены слова в категорию <b>Намерение</b>:\n{added_text}")
+
+        if already_existing:
+            existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+            msg_parts.append(f"ℹ️ Эти слова уже были в базе:\n{existing_text}")
+
+        await message.answer("\n\n".join(msg_parts), parse_mode="HTML")
+
+    await state.clear()
 
 
 
