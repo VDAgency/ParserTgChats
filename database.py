@@ -428,6 +428,8 @@ async def get_keywords_by_type(is_negative: bool) -> list[str]:
 #         return added_keywords, failed_keywords
 
 
+# === Функции добавления ключевых слов умного парсинга в базу данных ===
+
 async def add_intent_keywords_to_db(user_id, keywords):
     async with aiosqlite.connect("bot.db") as db:
         added_keywords = []
@@ -452,17 +454,181 @@ async def add_intent_keywords_to_db(user_id, keywords):
             if keyword in already_existing:
                 continue
 
-            lemmatized = lemmatize_word(keyword)
+            keyword_cleaned = keyword.strip().lower()
+            lemmatized = lemmatize_word(keyword_cleaned).lower()  # <- нормализуем лемму
 
             try:
                 await db.execute("""
                     INSERT INTO keywords_lemma (category, word, lemma)
                     VALUES (?, ?, ?)
-                """, ("intent", keyword, lemmatized))
+                """, ("intent", keyword_cleaned, lemmatized))  # <- сохраняем в нижнем регистре
                 added_keywords.append(keyword)
             except Exception as e:
                 logging.error(f"[add_intent_keywords_to_db] Ошибка при добавлении '{keyword}': {str(e)}")
-                # Добавим в already_existing как не добавленные
+                already_existing.append(keyword)
+
+        await db.commit()
+        return added_keywords, already_existing
+
+
+async def add_object_keywords_to_db(user_id, keywords):
+    async with aiosqlite.connect("bot.db") as db:
+        added_keywords = []
+        already_existing = []
+
+        # Получаем все существующие слова в категории 'object'
+        existing = await db.execute("SELECT word FROM keywords_lemma WHERE category = ?", ("object",))
+        existing_words = {row[0].strip().lower() for row in await existing.fetchall()}
+
+        # Определим какие слова уже есть
+        for keyword in keywords:
+            keyword_lower = keyword.strip().lower()
+            if keyword_lower in existing_words:
+                already_existing.append(keyword)
+
+        # Если все слова уже существуют — сразу выходим
+        if len(already_existing) == len(keywords):
+            return [], already_existing
+
+        # Добавим только те, которых ещё нет
+        for keyword in keywords:
+            if keyword in already_existing:
+                continue
+
+            keyword_cleaned = keyword.strip().lower()
+            lemmatized = lemmatize_word(keyword_cleaned).lower()
+
+            try:
+                await db.execute("""
+                    INSERT INTO keywords_lemma (category, word, lemma)
+                    VALUES (?, ?, ?)
+                """, ("object", keyword_cleaned, lemmatized))
+                added_keywords.append(keyword)
+            except Exception as e:
+                logging.error(f"[add_object_keywords_to_db] Ошибка при добавлении '{keyword}': {str(e)}")
+                already_existing.append(keyword)
+
+        await db.commit()
+        return added_keywords, already_existing
+
+
+async def add_region_keywords_to_db(user_id, keywords):
+    async with aiosqlite.connect("bot.db") as db:
+        added_keywords = []
+        already_existing = []
+
+        # Получаем все существующие слова в категории 'region'
+        existing = await db.execute("SELECT word FROM keywords_lemma WHERE category = ?", ("region",))
+        existing_words = {row[0].strip().lower() for row in await existing.fetchall()}
+
+        # Определим какие слова уже есть
+        for keyword in keywords:
+            keyword_lower = keyword.strip().lower()
+            if keyword_lower in existing_words:
+                already_existing.append(keyword)
+
+        # Если все слова уже существуют — сразу выходим
+        if len(already_existing) == len(keywords):
+            return [], already_existing
+
+        # Добавим только те, которых ещё нет
+        for keyword in keywords:
+            if keyword in already_existing:
+                continue
+
+            keyword_cleaned = keyword.strip().lower()
+            lemmatized = lemmatize_word(keyword_cleaned).lower()
+
+            try:
+                await db.execute("""
+                    INSERT INTO keywords_lemma (category, word, lemma)
+                    VALUES (?, ?, ?)
+                """, ("region", keyword_cleaned, lemmatized))
+                added_keywords.append(keyword)
+            except Exception as e:
+                logging.error(f"[add_region_keywords_to_db] Ошибка при добавлении '{keyword}': {str(e)}")
+                already_existing.append(keyword)
+
+        await db.commit()
+        return added_keywords, already_existing
+
+
+async def add_beach_keywords_to_db(user_id, keywords):
+    async with aiosqlite.connect("bot.db") as db:
+        added_keywords = []
+        already_existing = []
+
+        # Получаем все существующие слова в категории 'beach'
+        existing = await db.execute("SELECT word FROM keywords_lemma WHERE category = ?", ("beach",))
+        existing_words = {row[0].strip().lower() for row in await existing.fetchall()}
+
+        # Определим какие слова уже есть
+        for keyword in keywords:
+            keyword_lower = keyword.strip().lower()
+            if keyword_lower in existing_words:
+                already_existing.append(keyword)
+
+        # Если все слова уже существуют — сразу выходим
+        if len(already_existing) == len(keywords):
+            return [], already_existing
+
+        # Добавим только те, которых ещё нет
+        for keyword in keywords:
+            if keyword in already_existing:
+                continue
+
+            keyword_cleaned = keyword.strip().lower()
+            lemmatized = lemmatize_word(keyword_cleaned).lower()
+
+            try:
+                await db.execute("""
+                    INSERT INTO keywords_lemma (category, word, lemma)
+                    VALUES (?, ?, ?)
+                """, ("beach", keyword_cleaned, lemmatized))
+                added_keywords.append(keyword)
+            except Exception as e:
+                logging.error(f"[add_beach_keywords_to_db] Ошибка при добавлении '{keyword}': {str(e)}")
+                already_existing.append(keyword)
+
+        await db.commit()
+        return added_keywords, already_existing
+
+
+async def add_bedrooms_keywords_to_db(user_id, keywords):
+    async with aiosqlite.connect("bot.db") as db:
+        added_keywords = []
+        already_existing = []
+
+        # Получаем все существующие слова в категории 'bedrooms'
+        existing = await db.execute("SELECT word FROM keywords_lemma WHERE category = ?", ("bedrooms",))
+        existing_words = {row[0].strip().lower() for row in await existing.fetchall()}
+
+        # Определим какие слова уже есть
+        for keyword in keywords:
+            keyword_lower = keyword.strip().lower()
+            if keyword_lower in existing_words:
+                already_existing.append(keyword)
+
+        # Если все слова уже существуют — сразу выходим
+        if len(already_existing) == len(keywords):
+            return [], already_existing
+
+        # Добавим только те, которых ещё нет
+        for keyword in keywords:
+            if keyword in already_existing:
+                continue
+
+            keyword_cleaned = keyword.strip().lower()
+            lemmatized = lemmatize_word(keyword_cleaned).lower()
+
+            try:
+                await db.execute("""
+                    INSERT INTO keywords_lemma (category, word, lemma)
+                    VALUES (?, ?, ?)
+                """, ("bedrooms", keyword_cleaned, lemmatized))
+                added_keywords.append(keyword)
+            except Exception as e:
+                logging.error(f"[add_bedrooms_keywords_to_db] Ошибка при добавлении '{keyword}': {str(e)}")
                 already_existing.append(keyword)
 
         await db.commit()
@@ -470,14 +636,100 @@ async def add_intent_keywords_to_db(user_id, keywords):
 
 
 
+# === Функции удаления ключевых слов умного парсинга в базу данных ===
+
+async def delete_intent_keyword_from_db(user_id: int, keyword: str) -> bool:
+    keyword = keyword.strip().lower()  # Приводим входное слово к нижнему регистру
+
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT id FROM keywords_lemma
+            WHERE category = ? AND lower(word) = ?
+        """, ("intent", keyword))
+        row = await cursor.fetchone()
+        print(f"Searching for keyword: {keyword}, row found: {row}")
+        
+        if row:
+            await db.execute("DELETE FROM keywords_lemma WHERE id = ?", (row[0],))
+            await db.commit()
+            return True
+
+        return False
+
+async def delete_object_keyword_from_db(user_id: int, keyword: str) -> bool:
+    keyword = keyword.strip().lower()
+
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT id FROM keywords_lemma
+            WHERE category = ? AND lower(word) = ?
+        """, ("object", keyword))
+        row = await cursor.fetchone()
+        print(f"[OBJECT] Searching for keyword: {keyword}, row found: {row}")
+
+        if row:
+            await db.execute("DELETE FROM keywords_lemma WHERE id = ?", (row[0],))
+            await db.commit()
+            return True
+
+        return False
 
 
+async def delete_region_keyword_from_db(user_id: int, keyword: str) -> bool:
+    keyword = keyword.strip().lower()
+
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT id FROM keywords_lemma
+            WHERE category = ? AND lower(word) = ?
+        """, ("region", keyword))
+        row = await cursor.fetchone()
+        print(f"[REGION] Searching for keyword: {keyword}, row found: {row}")
+
+        if row:
+            await db.execute("DELETE FROM keywords_lemma WHERE id = ?", (row[0],))
+            await db.commit()
+            return True
+
+        return False
 
 
+async def delete_beach_keyword_from_db(user_id: int, keyword: str) -> bool:
+    keyword = keyword.strip().lower()
+
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT id FROM keywords_lemma
+            WHERE category = ? AND lower(word) = ?
+        """, ("beach", keyword))
+        row = await cursor.fetchone()
+        print(f"[BEACH] Searching for keyword: {keyword}, row found: {row}")
+
+        if row:
+            await db.execute("DELETE FROM keywords_lemma WHERE id = ?", (row[0],))
+            await db.commit()
+            return True
+
+        return False
 
 
+async def delete_bedrooms_keyword_from_db(user_id: int, keyword: str) -> bool:
+    keyword = keyword.strip().lower()
 
+    async with aiosqlite.connect("bot.db") as db:
+        cursor = await db.execute("""
+            SELECT id FROM keywords_lemma
+            WHERE category = ? AND lower(word) = ?
+        """, ("bedrooms", keyword))
+        row = await cursor.fetchone()
+        print(f"[BEDROOMS] Searching for keyword: {keyword}, row found: {row}")
 
+        if row:
+            await db.execute("DELETE FROM keywords_lemma WHERE id = ?", (row[0],))
+            await db.commit()
+            return True
+
+        return False
 
 
 

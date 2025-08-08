@@ -26,7 +26,8 @@ from states import ChatStates, KeywordStates, KeywordLemmaState
 from parser import get_entity_or_fail, start_client, stop_client, send_test_message
 from database import init_db, add_user_chat, delete_user_chat, is_user_chat_exists, get_user_chats, get_all_tracked_chats
 from database import add_keywords, delete_keyword, get_user_keywords_by_type, get_all_keywords_by_type
-from database import add_intent_keywords_to_db
+from database import add_intent_keywords_to_db, add_object_keywords_to_db, add_region_keywords_to_db, add_beach_keywords_to_db, add_bedrooms_keywords_to_db
+from database import delete_intent_keyword_from_db, delete_object_keyword_from_db, delete_region_keyword_from_db, delete_beach_keyword_from_db,delete_bedrooms_keyword_from_db
 from receiver import check_health
 
 
@@ -717,29 +718,6 @@ async def add_intent(callback: CallbackQuery, state: FSMContext):
         "• Или с новой строки:\n`сниму\nаренду`"
     )
 
-@dp.message(KeywordLemmaState.keywords_lemma_intent)
-async def process_intent_keywords(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    raw_input = message.text.strip()
-
-    if not raw_input:
-        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
-        return
-
-    # Разделяем слова по запятой или новой строке
-    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",")]
-
-    # Передаем исходные ключевые слова в функцию записи в базу
-    added_keywords = await add_intent_keywords_to_db(user_id, keywords)
-
-    if added_keywords:
-        formatted = "\n".join(f"• <code>{kw}</code>" for kw in added_keywords)
-        await message.answer(f"✅ Добавлены следующие ключевые слова в категорию 'Намерение':\n\n{formatted}")
-    else:
-        await message.answer("⚠️ Не удалось добавить ключевые слова. Возможно, они были пустыми.")
-    
-    # Очищаем состояние
-    await state.clear()
 
 @dp.message(KeywordLemmaState.keywords_lemma_intent)
 async def process_intent_keywords(message: Message, state: FSMContext):
@@ -750,7 +728,7 @@ async def process_intent_keywords(message: Message, state: FSMContext):
         await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
         return
 
-    # Разделение по запятой и новой строке
+    # Разделение по запятой или новой строке
     keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
     if not keywords:
         await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
@@ -782,6 +760,417 @@ async def process_intent_keywords(message: Message, state: FSMContext):
     await state.clear()
 
 
+# Функция добавления ключевого слова категории "Объект"
+@dp.callback_query(F.data == "add_object")
+async def add_object(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(KeywordLemmaState.keywords_lemma_object)
+    await callback.message.answer(
+        "✏️ Пришли ключевые слова или фразы, которые ты хочешь добавить в категорию 'Объект'.\n\n"
+        "Можно несколько:\n"
+        "• Через запятую → `вилла, квартира`\n"
+        "• Или с новой строки:\n`дом\nтаунхаус`"
+    )
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_object)
+async def process_object_keywords(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    raw_input = message.text.strip()
+
+    if not raw_input:
+        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
+        return
+
+    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
+    if not keywords:
+        await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
+        return
+
+    added, already_existing = await add_object_keywords_to_db(user_id, keywords)
+
+    if not added and already_existing:
+        existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+        await message.answer(
+            f"ℹ️ Эти слова уже были добавлены ранее в категорию <b>Объект</b>:\n\n{existing_text}",
+            parse_mode="HTML"
+        )
+    else:
+        msg_parts = []
+
+        if added:
+            added_text = "\n".join(f"• <code>{kw}</code>" for kw in added)
+            msg_parts.append(f"✅ Добавлены слова в категорию <b>Объект</b>:\n{added_text}")
+
+        if already_existing:
+            existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+            msg_parts.append(f"ℹ️ Эти слова уже были в базе:\n{existing_text}")
+
+        await message.answer("\n\n".join(msg_parts), parse_mode="HTML")
+
+    await state.clear()
+
+
+# Функция добавления ключевого слова категории "Район"
+@dp.callback_query(F.data == "add_region")
+async def add_region(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(KeywordLemmaState.keywords_lemma_region)
+    await callback.message.answer(
+        "✏️ Пришли ключевые слова или фразы, которые ты хочешь добавить в категорию 'Район'.\n\n"
+        "Можно несколько:\n"
+        "• Через запятую → `камала, патонг`\n"
+        "• Или с новой строки:\n`равай\nкатху`"
+    )
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_region)
+async def process_region_keywords(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    raw_input = message.text.strip()
+
+    if not raw_input:
+        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
+        return
+
+    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
+    if not keywords:
+        await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
+        return
+
+    added, already_existing = await add_region_keywords_to_db(user_id, keywords)
+
+    if not added and already_existing:
+        existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+        await message.answer(
+            f"ℹ️ Эти слова уже были добавлены ранее в категорию <b>Район</b>:\n\n{existing_text}",
+            parse_mode="HTML"
+        )
+    else:
+        msg_parts = []
+
+        if added:
+            added_text = "\n".join(f"• <code>{kw}</code>" for kw in added)
+            msg_parts.append(f"✅ Добавлены слова в категорию <b>Район</b>:\n{added_text}")
+
+        if already_existing:
+            existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+            msg_parts.append(f"ℹ️ Эти слова уже были в базе:\n{existing_text}")
+
+        await message.answer("\n\n".join(msg_parts), parse_mode="HTML")
+
+    await state.clear()
+
+
+# Функция добавления ключевого слова категории "Пляж"
+@dp.callback_query(F.data == "add_beach")
+async def add_beach(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(KeywordLemmaState.keywords_lemma_beach)
+    await callback.message.answer(
+        "✏️ Пришли ключевые слова или фразы, которые ты хочешь добавить в категорию 'Пляж'.\n\n"
+        "Можно несколько:\n"
+        "• Через запятую → `карон, сурин`\n"
+        "• Или с новой строки:\n`найхарн\nкамала`"
+    )
+
+@dp.message(KeywordLemmaState.keywords_lemma_beach)
+async def process_beach_keywords(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    raw_input = message.text.strip()
+
+    if not raw_input:
+        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
+        return
+
+    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
+    if not keywords:
+        await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
+        return
+
+    added, already_existing = await add_beach_keywords_to_db(user_id, keywords)
+
+    if not added and already_existing:
+        existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+        await message.answer(
+            f"ℹ️ Эти слова уже были добавлены ранее в категорию <b>Пляж</b>:\n\n{existing_text}",
+            parse_mode="HTML"
+        )
+    else:
+        msg_parts = []
+
+        if added:
+            added_text = "\n".join(f"• <code>{kw}</code>" for kw in added)
+            msg_parts.append(f"✅ Добавлены слова в категорию <b>Пляж</b>:\n{added_text}")
+
+        if already_existing:
+            existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+            msg_parts.append(f"ℹ️ Эти слова уже были в базе:\n{existing_text}")
+
+        await message.answer("\n\n".join(msg_parts), parse_mode="HTML")
+
+    await state.clear()
+
+
+# Функция добавления ключевого слова категории "Спальни"
+@dp.callback_query(F.data == "add_bedrooms")
+async def add_bedrooms(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(KeywordLemmaState.keywords_lemma_bedrooms)
+    await callback.message.answer(
+        "✏️ Пришли ключевые слова или фразы, которые ты хочешь добавить в категорию 'Спальни'.\n\n"
+        "Можно несколько:\n"
+        "• Через запятую → `1 спальня, две спальни`\n"
+        "• Или с новой строки:\n`3 спальни\nчетыре спальни`"
+    )
+
+@dp.message(KeywordLemmaState.keywords_lemma_bedrooms)
+async def process_bedrooms_keywords(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    raw_input = message.text.strip()
+
+    if not raw_input:
+        await message.answer("⚠️ Сообщение пустое. Пожалуйста, отправь хотя бы одно ключевое слово.")
+        return
+
+    keywords = [kw.strip() for kw in raw_input.replace("\n", ",").split(",") if kw.strip()]
+    if not keywords:
+        await message.answer("⚠️ Не удалось извлечь ни одного ключевого слова.")
+        return
+
+    added, already_existing = await add_bedrooms_keywords_to_db(user_id, keywords)
+
+    if not added and already_existing:
+        existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+        await message.answer(
+            f"ℹ️ Эти слова уже были добавлены ранее в категорию <b>Спальни</b>:\n\n{existing_text}",
+            parse_mode="HTML"
+        )
+    else:
+        msg_parts = []
+
+        if added:
+            added_text = "\n".join(f"• <code>{kw}</code>" for kw in added)
+            msg_parts.append(f"✅ Добавлены слова в категорию <b>Спальни</b>:\n{added_text}")
+
+        if already_existing:
+            existing_text = "\n".join(f"• <code>{kw}</code>" for kw in already_existing)
+            msg_parts.append(f"ℹ️ Эти слова уже были в базе:\n{existing_text}")
+
+        await message.answer("\n\n".join(msg_parts), parse_mode="HTML")
+
+    await state.clear()
+
+
+# Функция удаления ключевого слова категории "Намерение"
+@dp.callback_query(F.data == "remove_intent")
+async def handle_remove_intent(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли ключевое слово или фразу, которую ты хочешь удалить из категории <b>Намерение</b>.\n\n"
+        "Удаление возможно только по <u>одному</u> слову или фразе за раз.",
+        parse_mode="HTML"
+    )
+    await state.set_state(KeywordLemmaState.keywords_lemma_intent_deletion)
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_intent_deletion)
+async def process_intent_keyword_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➖ Удалить еще", callback_data="remove_intent")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="working_keywords_lemma")]
+    ])
+
+    if not keyword:
+        await message.answer("⚠️ Сообщение пустое. Введи ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_intent_keyword_from_db(user_id, keyword)
+
+    if removed:
+        await message.answer(
+            f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено из категории <b>Намерение</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ Ключевое слово <code>{keyword}</code> не найдено в категории <b>Намерение</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.clear()
+
+
+# Функция удаления ключевого слова категории "Объект"
+@dp.callback_query(F.data == "remove_object")
+async def handle_remove_object(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли ключевое слово или фразу, которую ты хочешь удалить из категории <b>Объект</b>.\n\n"
+        "Удаление возможно только по <u>одному</u> слову или фразе за раз.",
+        parse_mode="HTML"
+    )
+    await state.set_state(KeywordLemmaState.keywords_lemma_object_deletion)
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_object_deletion)
+async def process_object_keyword_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➖ Удалить еще", callback_data="remove_object")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="working_keywords_lemma")]
+    ])
+
+    if not keyword:
+        await message.answer("⚠️ Сообщение пустое. Введи ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_object_keyword_from_db(user_id, keyword)
+
+    if removed:
+        await message.answer(
+            f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено из категории <b>Объект</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ Ключевое слово <code>{keyword}</code> не найдено в категории <b>Объект</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.clear()
+
+
+# Функция удаления ключевого слова категории "Район"
+@dp.callback_query(F.data == "remove_region")
+async def handle_remove_region(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли ключевое слово или фразу, которую ты хочешь удалить из категории <b>Район</b>.\n\n"
+        "Удаление возможно только по <u>одному</u> слову или фразе за раз.",
+        parse_mode="HTML"
+    )
+    await state.set_state(KeywordLemmaState.keywords_lemma_region_deletion)
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_region_deletion)
+async def process_region_keyword_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➖ Удалить еще", callback_data="remove_region")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="working_keywords_lemma")]
+    ])
+
+    if not keyword:
+        await message.answer("⚠️ Сообщение пустое. Введи ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_region_keyword_from_db(user_id, keyword)
+
+    if removed:
+        await message.answer(
+            f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено из категории <b>Регион</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ Ключевое слово <code>{keyword}</code> не найдено в категории <b>Регион</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.clear()
+
+
+# Функция удаления ключевого слова категории "Пляж"
+@dp.callback_query(F.data == "remove_beach")
+async def handle_remove_beach(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли ключевое слово или фразу, которую ты хочешь удалить из категории <b>Пляж</b>.\n\n"
+        "Удаление возможно только по <u>одному</u> слову или фразе за раз.",
+        parse_mode="HTML"
+    )
+    await state.set_state(KeywordLemmaState.keywords_lemma_beach_deletion)
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_beach_deletion)
+async def process_beach_keyword_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➖ Удалить еще", callback_data="remove_beach")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="working_keywords_lemma")]
+    ])
+
+    if not keyword:
+        await message.answer("⚠️ Сообщение пустое. Введи ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_beach_keyword_from_db(user_id, keyword)
+
+    if removed:
+        await message.answer(
+            f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено из категории <b>Пляж</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ Ключевое слово <code>{keyword}</code> не найдено в категории <b>Пляж</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.clear()
+
+
+# Функция удаления ключевого слова категории "Спальни"
+@dp.callback_query(F.data == "remove_bedrooms")
+async def handle_remove_bedrooms(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(
+        "✂️ Пришли ключевое слово или фразу, которую ты хочешь удалить из категории <b>Спальни</b>.\n\n"
+        "Удаление возможно только по <u>одному</u> слову или фразе за раз.",
+        parse_mode="HTML"
+    )
+    await state.set_state(KeywordLemmaState.keywords_lemma_bedrooms_deletion)
+
+
+@dp.message(KeywordLemmaState.keywords_lemma_bedrooms_deletion)
+async def process_bedrooms_keyword_deletion(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    keyword = message.text.strip()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➖ Удалить еще", callback_data="remove_bedrooms")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="working_keywords_lemma")]
+    ])
+
+    if not keyword:
+        await message.answer("⚠️ Сообщение пустое. Введи ключевое слово или фразу, которую нужно удалить.")
+        return
+
+    removed = await delete_bedrooms_keyword_from_db(user_id, keyword)
+
+    if removed:
+        await message.answer(
+            f"🗑️ Ключевое слово <code>{keyword}</code> успешно удалено из категории <b>Спальни</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(
+            f"❌ Ключевое слово <code>{keyword}</code> не найдено в категории <b>Спальни</b>.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+    await state.clear()
 
 
 

@@ -119,7 +119,7 @@ async def send_to_supergroup_topic(message_id: int):
         f"<b>Имя:</b> {first_name}\n"
         f"<b>Юзернейм:</b> @{username if username else 'не указан'}\n\n"
         f"{text}\n"
-        f"<b>🔗 Ссылка на сообщение:</b> <a href='{message_link}'>перейти</a>"
+        f"<b>🔗 Ссылка на сообщение:</b> <a href='{message_link}'>перейти</a>\n"
     )
 
     try:
