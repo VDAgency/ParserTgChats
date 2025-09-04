@@ -301,8 +301,4 @@ async def photo_id_handler(event: Message):
         logger.exception(f"[PhotoID] Ошибка обработки: {e}")
 
 
-
 __all__ = ['client', 'start_client', 'stop_client', 'get_entity_or_fail']
-
-
-
