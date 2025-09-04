@@ -1,7 +1,8 @@
 import logging
 from telethon import events
 from telethon import TelegramClient
-from telethon.tl.types import User
+from telethon.tl.types import User, Message
+from telethon.tl.functions.channels import GetForumTopicsRequest
 from telethon.errors import FloodWaitError, SessionPasswordNeededError, PhoneMigrateError
 from client_instance import client
 from datetime import datetime, timedelta
@@ -14,6 +15,8 @@ from dotenv import load_dotenv
 from database import save_message, is_message_processed, get_last_parsed_date, get_all_tracked_chats, check_keywords_match, mark_message_as_processed
 from webhook_processor import process_and_send_webhook
 from group_sender import send_to_supergroup_topic
+from smart_parser import smart_parse_message
+from property_matcher import find_matching_properties, format_properties_message
 
 
 # Настройка логирования
@@ -33,6 +36,11 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 CHAT_IDS = [int(chat_id.strip()) for chat_id in os.getenv("CHAT_IDS", "").split(",")]
 PHONE = os.getenv("PHONE")
+MY_GROUP_ID = int(os.getenv("MY_GROUP_ID"))
+MY_TOPIC_ID = int(os.getenv("MY_TOPIC_ID"))
+
+
+TOPIC_CACHE = {}
 
 
 # Функция для запуска клиента
@@ -80,6 +88,7 @@ async def check_session():
         logger.info(f"{datetime.now()}: Session check failed: {str(e)}")
         return False
 
+
 async def reconnect(max_attempts=3, attempt=1):
     try:
         await client.disconnect()
@@ -104,9 +113,9 @@ async def handler(event):
 
     try:
         # Логирование получения списка чатов
-        logger.debug("Fetching tracked chat list from database.")
+        logger.debug("Fetching tracked chat list from database. | Извлечение отслеживаемого списка чатов из базы данных.")
         chat_list = await get_all_tracked_chats()  # Получаем актуальный список чатов из базы
-        logger.debug(f"Tracked chat list: {chat_list}")
+        logger.debug(f"Tracked chat list: {chat_list} | Список отслеживаемых чатов: {chat_list}")
 
         # Добавляем префикс '-100' к chat_id, если это супергруппа/канал
         if event.chat_id not in chat_list:
@@ -189,7 +198,18 @@ async def process_message(event):
     # ⛔ Пропускаем, если нет ключевых слов
     if not await check_keywords_match(message.text):
         logger.info(f"{datetime.now()}: Пропущено сообщение {message.id} — нет ключевых слов.")
-        await mark_message_as_processed(message.id)
+        if await smart_parse_message(message.id, message.text, message_data):
+            await send_to_supergroup_topic(message.id)
+            # запуск логики отбора объектов из гугл таблицы
+            user_id = sender_id
+            message_text = message.text
+            df_results = await find_matching_properties(message_text)
+            if not df_results.empty:
+                reply_text = await format_properties_message(df_results)
+                if reply_text:
+                    await client.send_message(user_id, reply_text)
+        else:
+            await mark_message_as_processed(message.id)
         return  # Прерываем выполнение функции
                     
     # Сохраняем новое сообщение в базу
@@ -198,8 +218,19 @@ async def process_message(event):
                     
     # Вызываем функцию обработки и отправки сообщения в супер группу
     await send_to_supergroup_topic(message.id)
-                    
+       
+    # запуск логики отбора объектов из гугл таблицы
+    user_id = sender_id
+    message_text = message.text
+    df_results = await find_matching_properties(message_text)
+    if not df_results.empty:
+        reply_text = await format_properties_message(df_results)
+        if reply_text:
+            await client.send_message(user_id, reply_text)
+    
+    # Отмечаем сообщение как обработанное
     await mark_message_as_processed(message.id)
+    
                     
     # Вызываем функцию обработки и отправки вебхука
     # await process_and_send_webhook(message.id)
@@ -212,144 +243,66 @@ async def process_message(event):
     #     await send_to_supergroup_topic(message.id)  # Дополнительная обработка, например, отправка в супергруппу
 
 
+async def get_topic_title(client, chat_id: int, topic_id: int) -> str:
+    """
+    Возвращает название топика по его ID (с кэшем).
+    """
+    if (chat_id, topic_id) in TOPIC_CACHE:
+        return TOPIC_CACHE[(chat_id, topic_id)]
 
-# async def parse_chat(chat_id, start_date=None):
-#     try:
-#         # Устанавливаем start_date как текущую дату и время
-#         if not start_date:
-#             start_date = datetime.now()  # Начинаем с текущего момента
+    try:
+        result = await client(GetForumTopicsRequest(
+            channel=chat_id,
+            offset_date=None,
+            offset_id=0,
+            offset_topic=0,
+            limit=100
+        ))
+        for topic in result.topics:
+            if topic.id == topic_id:
+                TOPIC_CACHE[(chat_id, topic_id)] = topic.title
+                return topic.title
+    except Exception as e:
+        logger.error(f"[PhotoID] Ошибка при получении названия топика {topic_id}: {e}")
+    return f"Топик {topic_id}"
 
-#         messages_processed = 0
-#         while True:
-#             try:
-#                 # Получаем сообщения из чата, начиная с start_date
-#                 async for message in client.iter_messages(chat_id, offset_date=start_date, limit=100):
-#                     # Проверяем, активна ли сессия
-#                     if not await check_session():
-#                         if not await reconnect():
-#                             return  # Выход, если не удалось переподключиться
-#                     # Проверяем, было ли сообщение уже обработано
-#                     if await is_message_processed(message.id):
-#                         logger.info(f"{datetime.now()}: Reached processed message {message.id} in chat {chat_id}. Stopping. | Достигнуто обработанное сообщение {message.id} в чате {chat_id}. Остановка парсинга.")
-#                         return  # Завершаем работу, как только нашли обработанное сообщение
 
-#                     # Получаем информацию о чате и отправителе
-#                     chat = await message.get_chat()
-#                     sender = await message.get_sender()
-                    
-#                     # Кэшируем сущность отправителя для получения access_hash
-#                     if sender and isinstance(sender, User):
-#                         try:
-#                             sender_entity = await client.get_entity(sender.id)
-#                             logger.info(f"Cached entity for {sender.id} with access_hash: {sender_entity.access_hash}")
-#                             logger.info(f"Full sender entity data: {vars(sender_entity)}")
-#                         except ValueError as ve:
-#                             logger.warning(f"Could not fully resolve sender {sender.id} entity: {str(ve)}")
-#                             logger.info(f"Partial sender data: {vars(sender) if hasattr(sender, '__dict__') else str(sender)}")
-#                         except Exception as e:
-#                             logger.error(f"Unexpected error resolving sender {sender.id}: {str(e)}", exc_info=True)
-#                             logger.info(f"Partial sender data: {vars(sender) if hasattr(sender, '__dict__') else str(sender)}")
+@client.on(events.NewMessage(chats=MY_GROUP_ID))
+async def photo_id_handler(event: Message):
+    """
+    Ловим фото в супергруппе в конкретном топике и отвечаем ID фотографии + название топика.
+    """
+    try:
+        topic_id = None
+        if event.message.reply_to:
+            topic_id = getattr(event.message.reply_to, "reply_to_msg_id", None)
 
-#                     # Безопасное извлечение имени и юзернейма
-#                     if sender and isinstance(sender, User):
-#                         first_name = sender.first_name
-#                         username = sender.username
-#                         sender_id = sender.id
-#                     else:
-#                         first_name = None
-#                         username = None
-#                         sender_id = sender.id if sender else None
-                    
-#                     # Преобразуем время сообщения в нужный формат
-#                     message_timestamp = message.date.timestamp()
-#                     message_data = {
-#                         "update_id": 0,
-#                         "message_id": message.id,
-#                         "chat_id": chat.id,
-#                         "chat_type": chat.type if hasattr(chat, "type") else "unknown",
-#                         "sender_id": sender_id,
-#                         "first_name": first_name,
-#                         "username": username,
-#                         "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(message_timestamp)),
-#                         "text": message.text if message.text else "",
-#                     }
-                    
-#                     # ⛔ Пропускаем все, кроме текстовых сообщений
-#                     if not message.text or not message.text.strip():
-#                         logger.info(f"{datetime.now()}: Пропущено сообщение {message.id} без текста из чата {chat_id}")
-#                         continue
-                    
-#                     # ⛔ Пропускаем, если нет ключевых слов
-#                     if not await check_keywords_match(message.text):
-#                         logger.info(f"{datetime.now()}: Пропущено сообщение {message.id} — нет ключевых слов.")
-#                         await mark_message_as_processed(message.id)
-#                         continue
-                    
-#                     # Сохраняем новое сообщение в базу
-#                     await save_message(**message_data)
-#                     logger.info(f"{datetime.now()}: Saved message {message.id} from chat {chat_id}")
-                    
-#                     # Вызываем функцию обработки и отправки сообщения в супер группу
-#                     await send_to_supergroup_topic(message.id)
-                    
-#                     await mark_message_as_processed(message.id)
-                    
-#                     # Вызываем функцию обработки и отправки вебхука
-#                     # await process_and_send_webhook(message.id)
-                    
-#                     messages_processed += 1  # Счетчик для отладки
-#                     await asyncio.sleep(random.uniform(1, 5))  # Случайная задержка для имитации человека
+        logger.info(f"[PhotoID] Получено сообщение, topic_id={topic_id}")
 
-#                 # Если дошли сюда, значит, в текущем запросе не нашли обработанное сообщение
-#                 # Устанавливаем start_date на дату последнего обработанного сообщения минус 1 секунда
-#                 if messages_processed > 0:
-#                     last_message_date = datetime.strptime(message_data["date"], "%Y-%m-%d %H:%M:%S")
-#                     start_date = last_message_date - timedelta(seconds=1)
-#                     logger.info(f"{datetime.now()}: Processed {messages_processed} messages. Continuing with start_date={start_date}")
-#                 else:
-#                     logger.info(f"{datetime.now()}: No new messages found in chat {chat_id}. Stopping. | В чате {chat_id} не найдено новых сообщений. Остановка.")
-#                     break  # Если новых сообщений нет, выходим
-#             except FloodWaitError as e:
-#                 logger.info(f"{datetime.now()}: Flood wait detected for chat {chat_id}. Waiting for {e.seconds} seconds.")
-#                 await asyncio.sleep(e.seconds)
-#                 continue  # Продолжаем после ожидания
-#             except PhoneMigrateError as e:
-#                 logger.info(f"{datetime.now()}: Phone migrated to DC {e.dc_id}. Reconnecting...")
-#                 await client.session.set_dc(e.dc_id, API_ID, API_HASH)
-#                 await reconnect()
-#                 continue  # Продолжаем после переподключения
-#     except ValueError as e:
-#         logger.info(f"{datetime.now()}: Error parsing chat {chat_id}: {str(e)}. Skipping this chat.")
-#     except Exception as e:
-#         logger.info(f"{datetime.now()}: Unexpected error parsing chat {chat_id}: {str(e)}. Skipping this chat.")
+        if topic_id == MY_TOPIC_ID:
+            if event.message.photo:
+                photo_id = event.message.photo.id
+                logger.info(f"[PhotoID] Найдено фото, id={photo_id}")
 
-# Экспортируем клиент и функции
+                # получаем название топика
+                topic_title = await get_topic_title(client, MY_GROUP_ID, topic_id)
+
+                # отправляем ответ
+                await client.send_message(
+                    MY_GROUP_ID,
+                    f"📸 Фото сохранено в топике: *{topic_title}*\nID фотографии: `{photo_id}`",
+                    reply_to=event.message.id,
+                    parse_mode="markdown"
+                )
+        else:
+            logger.info(f"[PhotoID] Топик не совпал (получили {topic_id}, ожидали {MY_TOPIC_ID})")
+
+    except Exception as e:
+        logger.exception(f"[PhotoID] Ошибка обработки: {e}")
+
+
+
 __all__ = ['client', 'start_client', 'stop_client', 'get_entity_or_fail']
 
-
-
-# async def parse_loop():
-#     while True:
-#         chat_ids = await get_all_tracked_chats()
-#         if not chat_ids:
-#             logger.info("Нет чатов для парсинга. Ожидаем 60 секунд...")
-#             await asyncio.sleep(60)
-#             continue
-
-#         for chat_id in chat_ids:
-#             if not await check_session():
-#                 if not await reconnect():
-#                     logger.info("Не удалось переподключиться. Останавливаем парсинг.")
-#                     return
-#             try:
-#                 logger.info(f"Начинаем парсинг чата {chat_id}")
-#                 await parse_chat(chat_id)
-#                 await asyncio.sleep(random.uniform(3, 6))  # Задержка между чатами
-#             except Exception as e:
-#                 logger.info(f"Ошибка при парсинге чата {chat_id}: {str(e)}")
-#                 continue
-
-#         logger.info("Цикл парсинга завершён. Ожидаем перед следующим циклом.")
-#         await asyncio.sleep(60)  # Задержка между полными циклами
 
 
